@@ -28,12 +28,7 @@
         .btn-ws { background: #25D366; color: white !important; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-size: 11px; font-weight: bold; }
         .btn-cercana { background: #003366; color: white !important; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; width: 100%; margin-top: 5px; }
         
-        .locate-button {
-            position: absolute; bottom: 130px; right: 10px; z-index: 1000; background: white; width: 40px; height: 40px; 
-            border-radius: 4px; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.3); border: none; display: flex; align-items: center; justify-content: center; font-size: 20px;
-        }
-        .inv { background: none; border: none; }
-        .error-msg { color: #c0392b; font-weight: bold; text-align: center; padding: 10px; font-size: 12px; line-height: 1.4; }
+        .distancia-label { background: #e74c3c; color: white; border: none; font-weight: bold; border-radius: 10px; padding: 2px 8px; font-size: 12px; }
 
         .map-title {
             position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 1000;
@@ -52,11 +47,10 @@
     <span>DIRECCIÓN GENERAL DE CORREOS Y TELÉGRAFOS (COTEL)</span>
 </div>
 <div class="search-container">
-    <input type="text" id="search-input" placeholder="CÓDIGO POSTAL..." maxlength="8">
+    <input type="text" id="search-input" placeholder="CÓDIGO POSTAL..." maxlength="12">
     <button id="search-btn">IR</button>
 </div>
 
-<button class="locate-button" onclick="findMe()">🧭</button>
 <div id="mapid"></div>
 
 <script>
@@ -74,29 +68,18 @@ const PARAMS = {
 const mymap = L.map('mapid', { zoomSnap: 0.1, zoomControl: false, maxZoom: 22 }).setView([8.5, -80.0], 8);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 22,
-    maxNativeZoom: 19 
+    maxZoom: 22, maxNativeZoom: 19 
 }).addTo(mymap);
 
 L.control.zoom({ position: 'bottomright' }).addTo(mymap);
 
-// Lógica de Zonas con Hover y Selección
 const layerZonas = L.geoJSON(null, { 
     style: { color: "#333", weight: 1.5, fillOpacity: 0.1, fillColor: "#3498db" },
     onEachFeature: (f, l) => {
         l.on({
-            mouseover: (e) => {
-                let layer = e.target;
-                layer.setStyle({ weight: 3, color: '#f1c40f', fillOpacity: 0.3 });
-                if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) { layer.bringToFront(); }
-            },
-            mouseout: (e) => {
-                layerZonas.resetStyle(e.target);
-            },
-            click: (e) => {
-                seleccionar(e.latlng.lat, e.latlng.lng, f.properties.VM_LEVEL);
-                L.DomEvent.stopPropagation(e);
-            }
+            mouseover: (e) => { e.target.setStyle({ weight: 3, color: '#f1c40f', fillOpacity: 0.3 }); },
+            mouseout: (e) => { layerZonas.resetStyle(e.target); },
+            click: (e) => { seleccionar(e.latlng.lat, e.latlng.lng, f.properties.VM_LEVEL); L.DomEvent.stopPropagation(e); }
         });
     }
 }).addTo(mymap);
@@ -104,14 +87,14 @@ const layerZonas = L.geoJSON(null, {
 const layerMacro = L.layerGroup().addTo(mymap);
 const layerMicro = L.layerGroup().addTo(mymap);
 const layerNano = L.layerGroup().addTo(mymap);
-const layerRutas = L.layerGroup().addTo(mymap);
 const layerEstafetas = L.layerGroup().addTo(mymap);
-const layerMiUbicacion = L.layerGroup().addTo(mymap);
 const selectionLayer = L.layerGroup().addTo(mymap);
+const distanceLayer = L.layerGroup().addTo(mymap);
 
 fetch('estafetas.geojson').then(r => r.json()).then(data => layerZonas.addData(data)).catch(e => {});
-fetch('estafetasl.geojson').then(r => r.json()).then(data => L.geoJSON(data, {style: {color: 'red', weight: 2}}).addTo(layerRutas)).catch(e => {});
-fetch('estafetasp.geojson').then(r => r.json()).then(data => L.geoJSON(data, {pointToLayer: (f,ll) => L.circleMarker(ll, {radius: 6, fillColor: 'green', color: '#fff', weight: 2, fillOpacity: 1})}).addTo(layerEstafetas)).catch(e => {});
+fetch('estafetasp.geojson').then(r => r.json()).then(data => L.geoJSON(data, {
+    pointToLayer: (f,ll) => L.circleMarker(ll, {radius: 6, fillColor: 'green', color: '#fff', weight: 2, fillOpacity: 1})
+}).addTo(layerEstafetas)).catch(e => {});
 
 function encode(num, len) {
     let s = ""; let n = Math.abs(Math.floor(num));
@@ -119,28 +102,15 @@ function encode(num, len) {
     return s;
 }
 
-function decode(s) {
-    let n = 0;
-    for (let i = 0; i < s.length; i++) {
-        let idx = PARAMS.ALFA.indexOf(s[i].toUpperCase());
-        n = n * 30 + idx;
-    }
-    return n;
-}
-
 function getGridInfo(lat, lng) {
     const totalPicoX = Math.floor(((lng - ORIGIN.lng) / PARAMS.RES_PICO) + 0.00001);
     const totalPicoY = Math.floor(((ORIGIN.lat - lat) / PARAMS.RES_PICO) + 0.00001);
     const totalNanoX = Math.floor(totalPicoX / 8);
     const totalNanoY = Math.floor(totalPicoY / 8);
-    const mx = Math.floor(totalNanoX / (24 * 25));
-    const my = Math.floor(totalNanoY / (24 * 25));
-    const microX = Math.floor((totalNanoX % (24 * 25)) / 25);
-    const microY = Math.floor((totalNanoY % (24 * 25)) / 25);
-    const nanoX = totalNanoX % 25;
-    const nanoY = totalNanoY % 25;
-    const picoX = totalPicoX % 8;
-    const picoY = totalPicoY % 8;
+    const mx = Math.floor(totalNanoX / (24 * 25)), my = Math.floor(totalNanoY / (24 * 25));
+    const microX = Math.floor((totalNanoX % (24 * 25)) / 25), microY = Math.floor((totalNanoY % (24 * 25)) / 25);
+    const nanoX = totalNanoX % 25, nanoY = totalNanoY % 25;
+    const picoX = totalPicoX % 8, picoY = totalPicoY % 8;
     return { 
         macro: encode((my * PARAMS.MACRO_X_COUNT) + mx, 2), 
         micro: encode((microY * 24) + microX, 2), 
@@ -149,72 +119,51 @@ function getGridInfo(lat, lng) {
     };
 }
 
-function isPointInPolygon(latlng, poly) {
-    let inside = false;
-    let x = latlng.lng, y = latlng.lat;
-    let parts = poly.getLatLngs();
-    if (!Array.isArray(parts[0][0])) parts = [parts]; 
-    for (let i = 0; i < parts.length; i++) {
-        let nodes = parts[i][0] instanceof L.LatLng ? parts[i] : parts[i][0];
-        for (let j = 0, k = nodes.length - 1; j < nodes.length; k = j++) {
-            let xi = nodes[j].lng, yi = nodes[j].lat;
-            let xj = nodes[k].lng, yj = nodes[k].lat;
-            if (((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) inside = !inside;
-        }
-    }
-    return inside;
-}
-
 function seleccionar(lat, lng, forcedZonaID = null) {
     selectionLayer.clearLayers();
+    distanceLayer.clearLayers();
     const z = mymap.getZoom();
     const step = (z >= 18) ? PARAMS.RES_PICO : (z >= 16.5) ? PARAMS.RES_NANO : (z >= 13) ? PARAMS.RES_MICRO : PARAMS.RES_MACRO;
 
     const idxX = Math.floor(((lng - ORIGIN.lng) / step) + 0.00001);
     const idxY = Math.floor(((ORIGIN.lat - lat) / step) + 0.00001);
-    const snapLng = ORIGIN.lng + (idxX * step);
-    const snapLat = ORIGIN.lat - (idxY * step);
+    const snapLng = ORIGIN.lng + (idxX * step), snapLat = ORIGIN.lat - (idxY * step);
 
     let zonaID = forcedZonaID;
     if (!zonaID) {
         layerZonas.eachLayer(layer => {
-            if (layer instanceof L.Polygon && isPointInPolygon(L.latLng(lat, lng), layer)) {
-                zonaID = layer.feature.properties.VM_LEVEL;
-            }
+            if (layer instanceof L.Polygon && layer.getBounds().contains(L.latLng(lat, lng))) zonaID = layer.feature.properties.VM_LEVEL;
         });
     }
-
-    if (!zonaID) {
-        L.popup().setLatLng([lat, lng]).setContent('<div class="error-msg">⚠️ ÁREA NO DEFINIDA</div>').openOn(mymap);
-        return;
-    }
+    if (!zonaID) return;
 
     const res = getGridInfo(lat, lng);
-    
-    // Nueva Estructura: Quitar 2do y 3er dígito
-    let zonaLimpia = zonaID.toString();
-    if(zonaLimpia.length >= 3) {
-        zonaLimpia = zonaLimpia.charAt(0) + zonaLimpia.substring(3);
+    let titulo = "";
+    let codigoFinal = "";
+
+    // LÓGICA DE EVOLUCIÓN DEL CÓDIGO
+    if (z < 13) {
+        titulo = "ZONA POSTAL";
+        codigoFinal = zonaID; // Solo el ID del GeoJSON (A3802)
+    } else if (z < 16.5) {
+        titulo = "ÁREA MACRO/MICRO";
+        codigoFinal = `${zonaID}-${res.macro}${res.micro}`;
+    } else if (z < 18) {
+        titulo = "CÓDIGO NANO (26m)";
+        codigoFinal = `${zonaID}-${res.macro}${res.micro}${res.nano}`;
+    } else {
+        // NIVEL PICO: APLICAMOS LA MODIFICACIÓN DE CARACTERES
+        titulo = "PUNTO EXACTO (3m)";
+        let zonaLimpia = zonaID.toString().charAt(0) + zonaID.toString().substring(3); // Salta 2do y 3er dígito
+        codigoFinal = `${zonaLimpia}${res.macro}-${res.micro}${res.nano}${res.pico}`;
     }
 
-    let titulo = (z >= 18) ? "PUNTO EXACTO (3m)" : (z >= 16.5 ? "CÓDIGO POSTAL" : "ZONA POSTAL");
-    
-    let codigoRaw = (z >= 18) ? `${res.macro}${res.micro}${res.nano}${res.pico}` : 
-                 (z >= 16.5 ? `${res.macro}${res.micro}${res.nano}` : 
-                 (z >= 13 ? `${res.macro}${res.micro}` : `${res.macro}` ));
-
-    let codigoFinal = `${zonaLimpia}${codigoRaw.substring(0,2)}-${codigoRaw.substring(2)}`;
-
-    // CUADRO ROJO DE SELECCIÓN
     L.rectangle([[snapLat, snapLng], [snapLat - step, snapLng + step]], { 
         color: '#e74c3c', weight: 2, fillOpacity: 0.3, interactive: false 
     }).addTo(selectionLayer);
 
     L.marker([lat, lng], { 
-        icon: L.icon({ 
-            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', 
-            iconSize: [20, 32], iconAnchor: [10, 32] 
-        }) 
+        icon: L.icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', iconSize: [20, 32], iconAnchor: [10, 32] }) 
     }).addTo(selectionLayer)
      .bindPopup(`
         <span class="popup-header">${titulo}</span>
@@ -227,16 +176,30 @@ function seleccionar(lat, lng, forcedZonaID = null) {
      `, { offset: L.point(0, -45) }).openPopup();
 }
 
+function buscarEstafetaCercana(userLat, userLng) {
+    distanceLayer.clearLayers();
+    let puntoUsuario = L.latLng(userLat, userLng);
+    let estafetaMasCercana = null, distanciaMinima = Infinity;
+    layerEstafetas.eachLayer(l => {
+        let dist = puntoUsuario.distanceTo(l.getLatLng());
+        if (dist < distanciaMinima) { distanciaMinima = dist; estafetaMasCercana = l; }
+    });
+    if (estafetaMasCercana) {
+        let puntoEstafeta = estafetaMasCercana.getLatLng();
+        let distTexto = distanciaMinima > 1000 ? (distanciaMinima/1000).toFixed(2) + " km" : Math.round(distanciaMinima) + " m";
+        let poly = L.polyline([puntoUsuario, puntoEstafeta], { color: '#e74c3c', weight: 3, dashArray: '10, 10', opacity: 0.7 }).addTo(distanceLayer);
+        L.marker(poly.getCenter(), { icon: L.divIcon({ className: 'inv' }) }).bindTooltip(distTexto, { permanent: true, direction: 'center', className: 'distancia-label' }).addTo(distanceLayer);
+        mymap.fitBounds(poly.getBounds(), { padding: [50, 50] });
+        estafetaMasCercana.openPopup();
+    }
+}
+
 function render() {
     layerMacro.clearLayers(); layerMicro.clearLayers(); layerNano.clearLayers();
-    const z = mymap.getZoom();
-    const b = mymap.getBounds();
-
+    const z = mymap.getZoom(), b = mymap.getBounds();
     const draw = (step, layer, labelClass, color, weight, opacity, maxRects) => {
-        let sIdxX = Math.floor((b.getWest() - ORIGIN.lng) / step);
-        let sIdxY = Math.floor((ORIGIN.lat - b.getNorth()) / step);
-        let sLng = ORIGIN.lng + (sIdxX * step);
-        let sLat = ORIGIN.lat - (sIdxY * step);
+        let sIdxX = Math.floor((b.getWest() - ORIGIN.lng) / step), sIdxY = Math.floor((ORIGIN.lat - b.getNorth()) / step);
+        let sLng = ORIGIN.lng + (sIdxX * step), sLat = ORIGIN.lat - (sIdxY * step);
         let count = 0;
         for (let lo = sLng; lo < b.getEast() + step && lo < PANAMA_LIMITS.E; lo += step) {
             for (let la = sLat; la > b.getSouth() - step && la > PANAMA_LIMITS.S; la -= step) {
@@ -250,55 +213,15 @@ function render() {
             }
         }
     };
-
     if (z >= 9) draw(PARAMS.RES_MACRO, layerMacro, 'label-macro', '#1a73e8', 1.5, 0.2, 600);
     if (z >= 13) draw(PARAMS.RES_MICRO, layerMicro, 'label-micro', '#e67e22', 1, 0.2, 900);
     if (z >= 16.5) draw(PARAMS.RES_NANO, layerNano, '', '#2c3e50', 0.5, 0.2, 1600);
 }
 
-document.getElementById('search-btn').addEventListener('click', () => {
-    alert("Buscador en mantenimiento para nuevo formato");
-});
-
-const overlays = { 
-    "🔲 Zonas": layerZonas, 
-    "🟦 Cuadrícula": layerMacro, 
-    "⬛ Cuadros (26m)": layerNano,
-    "🛣️ Rutas": layerRutas, 
-    "📍 Estafetas": layerEstafetas, 
-    "🔵 Mi Ubicación": layerMiUbicacion 
-};
-L.control.layers(null, overlays, { collapsed: false }).addTo(mymap);
-
-function findMe() { mymap.locate({setView: true, maxZoom: 21}); }
-mymap.on('locationfound', (e) => { 
-    layerMiUbicacion.clearLayers(); 
-    L.circleMarker(e.latlng, {radius: 8, color: 'white', fillColor: '#1a73e8', fillOpacity: 1, weight: 3}).addTo(layerMiUbicacion); 
-    seleccionar(e.latlng.lat, e.latlng.lng); 
-});
-
 mymap.on('click', (e) => seleccionar(e.latlng.lat, e.latlng.lng));
 mymap.on('moveend', render);
+L.control.layers(null, { "🔲 Zonas": layerZonas, "🟦 Cuadrícula": layerMacro, "⬛ Cuadros (26m)": layerNano, "📍 Estafetas": layerEstafetas }, { collapsed: false }).addTo(mymap);
 render();
-
-function buscarEstafetaCercana(userLat, userLng) {
-    let puntoUsuario = L.latLng(userLat, userLng);
-    let estafetaMasCercana = null;
-    let distanciaMinima = Infinity;
-    layerEstafetas.eachLayer(function(layer) {
-        let layers = (layer.getLayers) ? layer.getLayers() : [layer];
-        layers.forEach(function(l) {
-            if (l.getLatLng) {
-                let dist = puntoUsuario.distanceTo(l.getLatLng());
-                if (dist < distanciaMinima) { distanciaMinima = dist; estafetaMasCercana = l; }
-            }
-        });
-    });
-    if (estafetaMasCercana) {
-        mymap.flyTo(estafetaMasCercana.getLatLng(), 16);
-        estafetaMasCercana.openPopup();
-    }
-}
 </script>
 </body>
 </html>
