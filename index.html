@@ -29,8 +29,7 @@
         .btn-cercana { background: #003366; color: white !important; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; width: 100%; margin-top: 5px; }
         
         .distancia-label { background: #e74c3c; color: white; border: none; font-weight: bold; border-radius: 10px; padding: 2px 8px; font-size: 12px; }
-        
-        .locate-button { position: absolute; bottom: 130px; right: 10px; z-index: 1000; background: white; width: 40px; height: 40px; border-radius: 4px; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.3); border: none; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+        .locate-button { position: absolute; bottom: 30px; left: 10px; z-index: 1000; background: white; width: 40px; height: 40px; border-radius: 4px; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.3); border: none; display: flex; align-items: center; justify-content: center; font-size: 20px; }
         .inv { background: none; border: none; }
 
         .map-title { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 1000; background: none; text-align: center; pointer-events: none; width: 100%; }
@@ -53,21 +52,16 @@
 
 <script>
 const ORIGIN = { lat: 10.0, lng: -83.0 };
-const PANAMA_LIMITS = { N: 10.0, S: 7.0, W: -83.0, E: -77.0 };
 const PARAMS = {
-    RES_MACRO: 0.143, 
-    RES_MICRO: 0.143 / 24,
-    RES_NANO: (0.143 / 24) / 25,
-    RES_PICO: ((0.143 / 24) / 25) / 8, 
-    ALFA: "23456789ABCDEFGHJKLMNPQRSTVWXYZ",
-    MACRO_X_COUNT: Math.ceil((77.0 - 83.0) / -0.143)
+    RES_MACRO: 0.143, RES_MICRO: 0.143/24, RES_NANO: (0.143/24)/25, RES_PICO: ((0.143/24)/25)/8, 
+    ALFA: "23456789ABCDEFGHJKLMNPQRSTVWXYZ", MACRO_X_COUNT: Math.ceil((77.0 - 83.0) / -0.143)
 };
 
 const mymap = L.map('mapid', { zoomSnap: 0.1, zoomControl: false, maxZoom: 22 }).setView([8.5, -80.0], 8);
-
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 22, maxNativeZoom: 19 }).addTo(mymap);
 L.control.zoom({ position: 'bottomright' }).addTo(mymap);
 
+// CAPAS RESTAURADAS
 const layerZonas = L.geoJSON(null, { 
     style: { color: "#333", weight: 1.5, fillOpacity: 0.1, fillColor: "#3498db" },
     onEachFeature: (f, l) => {
@@ -88,11 +82,14 @@ const layerMiUbicacion = L.layerGroup().addTo(mymap);
 const selectionLayer = L.layerGroup().addTo(mymap);
 const distanceLayer = L.layerGroup().addTo(mymap);
 
-fetch('estafetas.geojson').then(r => r.json()).then(data => layerZonas.addData(data)).catch(e => {});
-fetch('estafetasl.geojson').then(r => r.json()).then(data => L.geoJSON(data, {style: {color: 'red', weight: 2}}).addTo(layerRutas)).catch(e => {});
-fetch('estafetasp.geojson').then(r => r.json()).then(data => L.geoJSON(data, {
-    pointToLayer: (f,ll) => L.circleMarker(ll, {radius: 6, fillColor: 'green', color: '#fff', weight: 2, fillOpacity: 1})
-}).addTo(layerEstafetas)).catch(e => {});
+// CARGA DE DATOS SIN ELIMINACIONES
+fetch('estafetas.geojson').then(r => r.json()).then(data => layerZonas.addData(data));
+fetch('estafetasl.geojson').then(r => r.json()).then(data => L.geoJSON(data, {style: {color: 'red', weight: 2}}).addTo(layerRutas));
+fetch('estafetasp.geojson').then(r => r.json()).then(data => {
+    L.geoJSON(data, {
+        pointToLayer: (f,ll) => L.circleMarker(ll, {radius: 7, fillColor: '#27ae60', color: '#fff', weight: 2, fillOpacity: 1})
+    }).bindPopup(f => `<b>Estafeta:</b> ${f.feature.properties.NOMBRE || 'COTEL'}`).addTo(layerEstafetas);
+});
 
 function encode(num, len) {
     let s = ""; let n = Math.abs(Math.floor(num));
@@ -117,7 +114,6 @@ function seleccionar(lat, lng, forcedZonaID = null) {
     distanceLayer.clearLayers();
     const z = mymap.getZoom();
     
-    // Obtener Zona ID
     let zonaID = forcedZonaID;
     if (!zonaID) {
         layerZonas.eachLayer(layer => {
@@ -127,16 +123,13 @@ function seleccionar(lat, lng, forcedZonaID = null) {
     if (!zonaID) return;
 
     const res = getGridInfo(lat, lng);
-    let titulo = "";
-    let codigoFinal = "";
-    let drawBox = false;
+    let titulo = "", codigoFinal = "", drawBox = false;
 
-    // JERARQUIA DE CÓDIGO
     if (z < 13) {
         titulo = "ZONA POSTAL";
         codigoFinal = zonaID;
     } else {
-        drawBox = true; // Solo dibujamos cuadro si el zoom es suficiente
+        drawBox = true; 
         if (z < 16.5) {
             titulo = "ÁREA MACRO/MICRO";
             codigoFinal = `${zonaID}-${res.macro}${res.micro}`;
@@ -164,28 +157,31 @@ function seleccionar(lat, lng, forcedZonaID = null) {
         <span class="popup-header">${titulo}</span>
         <div class="codigo-final">${codigoFinal}</div>
         <div class="btn-container">
-            <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn-maps">📍 MAPS</a>
+            <a href="https://www.google.com/maps/search/?api=1&query=${lat},${lng}" target="_blank" class="btn-maps">📍 MAPS</a>
             <a href="https://wa.me/?text=Mi+Dirección+Postal:+${codigoFinal}" target="_blank" class="btn-ws">💬 WS</a>
             <button onclick="buscarEstafetaCercana(${lat}, ${lng})" class="btn-cercana">📍 ESTAFETA CERCANA</button>
         </div>
      `, { offset: L.point(0, -45) }).openPopup();
 }
 
-function buscarEstafetaCercana(userLat, userLng) {
+function buscarEstafetaCercana(lat, lng) {
     distanceLayer.clearLayers();
-    let puntoUsuario = L.latLng(userLat, userLng);
-    let estafetaMasCercana = null, distanciaMinima = Infinity;
+    const userPt = L.latLng(lat, lng);
+    let cercana = null, dMin = Infinity;
+
     layerEstafetas.eachLayer(l => {
-        let dist = puntoUsuario.distanceTo(l.getLatLng());
-        if (dist < distanciaMinima) { distanciaMinima = dist; estafetaMasCercana = l; }
+        const pt = l.getLatLng();
+        const d = userPt.distanceTo(pt);
+        if (d < dMin) { dMin = d; cercana = l; }
     });
-    if (estafetaMasCercana) {
-        let puntoEstafeta = estafetaMasCercana.getLatLng();
-        let distTexto = distanciaMinima > 1000 ? (distanciaMinima/1000).toFixed(2) + " km" : Math.round(distanciaMinima) + " m";
-        let poly = L.polyline([puntoUsuario, puntoEstafeta], { color: '#e74c3c', weight: 3, dashArray: '10, 10', opacity: 0.7 }).addTo(distanceLayer);
-        L.marker(poly.getCenter(), { icon: L.divIcon({ className: 'inv' }) }).bindTooltip(distTexto, { permanent: true, direction: 'center', className: 'distancia-label' }).addTo(distanceLayer);
-        mymap.fitBounds(poly.getBounds(), { padding: [100, 100] });
-        estafetaMasCercana.openPopup();
+
+    if (cercana) {
+        const estPt = cercana.getLatLng();
+        const texto = dMin > 1000 ? (dMin/1000).toFixed(2) + " km" : Math.round(dMin) + " m";
+        const line = L.polyline([userPt, estPt], { color: '#c0392b', weight: 4, dashArray: '8, 8' }).addTo(distanceLayer);
+        L.marker(line.getCenter(), { icon: L.divIcon({ className: 'inv' }) }).bindTooltip(texto, { permanent: true, direction: 'center', className: 'distancia-label' }).addTo(distanceLayer);
+        mymap.fitBounds(line.getBounds(), { padding: [100, 100] });
+        cercana.openPopup();
     }
 }
 
@@ -196,8 +192,8 @@ function render() {
         let sIdxX = Math.floor((b.getWest() - ORIGIN.lng) / step), sIdxY = Math.floor((ORIGIN.lat - b.getNorth()) / step);
         let sLng = ORIGIN.lng + (sIdxX * step), sLat = ORIGIN.lat - (sIdxY * step);
         let count = 0;
-        for (let lo = sLng; lo < b.getEast() + step && lo < PANAMA_LIMITS.E; lo += step) {
-            for (let la = sLat; la > b.getSouth() - step && la > PANAMA_LIMITS.S; la -= step) {
+        for (let lo = sLng; lo < b.getEast() + step; lo += step) {
+            for (let la = sLat; la > b.getSouth() - step; la -= step) {
                 if (count++ > maxRects) return;
                 const info = getGridInfo(la - step/2, lo + step/2);
                 L.rectangle([[la, lo], [la - step, lo + step]], { color: color, weight: weight, fill: false, opacity: opacity, interactive: false }).addTo(layer);
@@ -208,15 +204,15 @@ function render() {
             }
         }
     };
-    if (z >= 9) draw(PARAMS.RES_MACRO, layerMacro, 'label-macro', '#1a73e8', 1.5, 0.2, 600);
-    if (z >= 13) draw(PARAMS.RES_MICRO, layerMicro, 'label-micro', '#e67e22', 1, 0.2, 900);
-    if (z >= 16.5) draw(PARAMS.RES_NANO, layerNano, '', '#2c3e50', 0.5, 0.2, 1600);
+    if (z >= 9) draw(PARAMS.RES_MACRO, layerMacro, 'label-macro', '#1a73e8', 1.5, 0.2, 500);
+    if (z >= 13) draw(PARAMS.RES_MICRO, layerMicro, 'label-micro', '#e67e22', 1, 0.2, 800);
+    if (z >= 16.5) draw(PARAMS.RES_NANO, layerNano, '', '#2c3e50', 0.5, 0.2, 1500);
 }
 
-function findMe() { mymap.locate({setView: true, maxZoom: 21}); }
+function findMe() { mymap.locate({setView: true, maxZoom: 19}); }
 mymap.on('locationfound', (e) => { 
     layerMiUbicacion.clearLayers(); 
-    L.circleMarker(e.latlng, {radius: 8, color: 'white', fillColor: '#1a73e8', fillOpacity: 1, weight: 3}).addTo(layerMiUbicacion); 
+    L.circleMarker(e.latlng, {radius: 9, color: 'white', fillColor: '#1a73e8', fillOpacity: 1, weight: 3}).addTo(layerMiUbicacion); 
     seleccionar(e.latlng.lat, e.latlng.lng); 
 });
 
