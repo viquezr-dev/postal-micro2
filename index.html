@@ -71,16 +71,20 @@ const PARAMS = {
     MACRO_X_COUNT: Math.ceil((77.0 - 83.0) / -0.143)
 };
 
+// Configuración de mapa para que no desaparezca el fondo en zoom alto
 const mymap = L.map('mapid', { 
     zoomSnap: 0.1, 
     zoomControl: false,
     maxZoom: 22 
 }).setView([8.5, -80.0], 8);
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mymap);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 22,
+    maxNativeZoom: 19 // Esto hace que a partir del 19 se reescale la imagen en lugar de borrarse
+}).addTo(mymap);
+
 L.control.zoom({ position: 'bottomright' }).addTo(mymap);
 
-// Capas de Datos
 const layerZonas = L.geoJSON(null, { 
     style: { color: "#333", weight: 1.5, fillOpacity: 0.1, fillColor: "#3498db" },
     onEachFeature: (f, l) => {
@@ -91,13 +95,11 @@ const layerZonas = L.geoJSON(null, {
 const layerMacro = L.layerGroup().addTo(mymap);
 const layerMicro = L.layerGroup().addTo(mymap);
 const layerNano = L.layerGroup().addTo(mymap);
-const layerPico = L.layerGroup().addTo(mymap);
 const layerRutas = L.layerGroup().addTo(mymap);
 const layerEstafetas = L.layerGroup().addTo(mymap);
 const layerMiUbicacion = L.layerGroup().addTo(mymap);
 const selectionLayer = L.layerGroup().addTo(mymap);
 
-// Fetch de archivos locales
 fetch('estafetas.geojson').then(r => r.json()).then(data => layerZonas.addData(data)).catch(e => {});
 fetch('estafetasl.geojson').then(r => r.json()).then(data => L.geoJSON(data, {style: {color: 'red', weight: 2}}).addTo(layerRutas)).catch(e => {});
 fetch('estafetasp.geojson').then(r => r.json()).then(data => L.geoJSON(data, {pointToLayer: (f,ll) => L.circleMarker(ll, {radius: 6, fillColor: 'green', color: '#fff', weight: 2, fillOpacity: 1})}).addTo(layerEstafetas)).catch(e => {});
@@ -159,11 +161,6 @@ function seleccionar(lat, lng, forcedZonaID = null) {
     const z = mymap.getZoom();
     const step = (z >= 18) ? PARAMS.RES_PICO : (z >= 16.5) ? PARAMS.RES_NANO : (z >= 13) ? PARAMS.RES_MICRO : PARAMS.RES_MACRO;
 
-    const idxX = Math.floor(((lng - ORIGIN.lng) / step) + 0.00001);
-    const idxY = Math.floor(((ORIGIN.lat - lat) / step) + 0.00001);
-    const snapLng = ORIGIN.lng + (idxX * step);
-    const snapLat = ORIGIN.lat - (idxY * step);
-
     let zonaID = forcedZonaID;
     if (!zonaID) {
         layerZonas.eachLayer(layer => {
@@ -181,29 +178,31 @@ function seleccionar(lat, lng, forcedZonaID = null) {
     const res = getGridInfo(lat, lng);
     const isZonaVisible = mymap.hasLayer(layerZonas);
     
-    let titulo = isZonaVisible ? "ZONA POSTAL" : (z >= 18 ? "PUNTO EXACTO (3m)" : (z >= 16.5 ? "CÓDIGO POSTAL" : "ÁREA POSTAL"));
-    let codigo = isZonaVisible ? zonaID : 
-                 (z >= 18 ? `${zonaID}-${res.macro}${res.micro}${res.nano}${res.pico}` : 
+    let titulo = (z >= 18) ? "PUNTO EXACTO (3m)" : (z >= 16.5 ? "CÓDIGO POSTAL" : "ZONA POSTAL");
+    let codigo = (z >= 18) ? `${zonaID}-${res.macro}${res.micro}${res.nano}${res.pico}` : 
                  (z >= 16.5 ? `${zonaID}-${res.macro}${res.micro}${res.nano}` : 
-                 (z >= 13 ? `${zonaID}-${res.macro}${res.micro}` : `${zonaID}-${res.macro}`)));
+                 (z >= 13 ? `${zonaID}-${res.macro}${res.micro}` : `${zonaID}` ));
 
-    if (!isZonaVisible) L.rectangle([[snapLat, snapLng], [snapLat - step, snapLng + step]], { color: '#f1c40f', weight: 3, fillOpacity: 0.2 }).addTo(selectionLayer);
-
-    L.marker([lat, lng], { icon: L.icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', iconSize: [20, 32], iconAnchor: [10, 32] }) })
-     .addTo(selectionLayer)
+    L.marker([lat, lng], { 
+        icon: L.icon({ 
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', 
+            iconSize: [20, 32], 
+            iconAnchor: [10, 32] 
+        }) 
+    }).addTo(selectionLayer)
      .bindPopup(`
         <span class="popup-header">${titulo}</span>
         <div class="codigo-final">${codigo}</div>
         <div class="btn-container">
             <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn-maps">📍 MAPS</a>
-            <a href="https://wa.me/?text=Mi+Código+Postal+COTEL+es:+${codigo}" target="_blank" class="btn-ws">💬 WS</a>
+            <a href="https://wa.me/?text=Mi+Dirección+Postal:+${codigo}" target="_blank" class="btn-ws">💬 WS</a>
             <button onclick="buscarEstafetaCercana(${lat}, ${lng})" class="btn-cercana">📍 ESTAFETA CERCANA</button>
         </div>
      `, { offset: L.point(0, -45) }).openPopup();
 }
 
 function render() {
-    layerMacro.clearLayers(); layerMicro.clearLayers(); layerNano.clearLayers(); layerPico.clearLayers();
+    layerMacro.clearLayers(); layerMicro.clearLayers(); layerNano.clearLayers();
     const z = mymap.getZoom();
     const b = mymap.getBounds();
 
@@ -229,7 +228,6 @@ function render() {
     if (z >= 9) draw(PARAMS.RES_MACRO, layerMacro, 'label-macro', '#1a73e8', 1.5, 0.2, 600);
     if (z >= 13) draw(PARAMS.RES_MICRO, layerMicro, 'label-micro', '#e67e22', 1, 0.2, 900);
     if (z >= 16.5) draw(PARAMS.RES_NANO, layerNano, '', '#2c3e50', 0.5, 0.2, 1600);
-    if (z >= 18) draw(PARAMS.RES_PICO, layerPico, '', '#8e44ad', 0.4, 0.4, 2500);
 }
 
 document.getElementById('search-btn').addEventListener('click', () => {
@@ -254,8 +252,7 @@ document.getElementById('search-btn').addEventListener('click', () => {
 const overlays = { 
     "🔲 Zonas": layerZonas, 
     "🟦 Cuadrícula": layerMacro, 
-    "⬛ Nano (26m)": layerNano,
-    "🟪 Pico (3m)": layerPico,
+    "⬛ Cuadros (26m)": layerNano,
     "🛣️ Rutas": layerRutas, 
     "📍 Estafetas": layerEstafetas, 
     "🔵 Mi Ubicación": layerMiUbicacion 
@@ -273,7 +270,6 @@ mymap.on('click', (e) => seleccionar(e.latlng.lat, e.latlng.lng));
 mymap.on('moveend', render);
 render();
 
-// Función placeholder para estafetas (asegúrate de que esté definida en tu script original)
 function buscarEstafetaCercana(userLat, userLng) {
     let puntoUsuario = L.latLng(userLat, userLng);
     let estafetaMasCercana = null;
