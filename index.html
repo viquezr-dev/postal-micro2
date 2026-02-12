@@ -71,11 +71,7 @@ const PARAMS = {
     MACRO_X_COUNT: Math.ceil((77.0 - 83.0) / -0.143)
 };
 
-const mymap = L.map('mapid', { 
-    zoomSnap: 0.1, 
-    zoomControl: false,
-    maxZoom: 22 
-}).setView([8.5, -80.0], 8);
+const mymap = L.map('mapid', { zoomSnap: 0.1, zoomControl: false, maxZoom: 22 }).setView([8.5, -80.0], 8);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 22,
@@ -84,10 +80,24 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 L.control.zoom({ position: 'bottomright' }).addTo(mymap);
 
+// Lógica de Zonas con Hover y Selección
 const layerZonas = L.geoJSON(null, { 
     style: { color: "#333", weight: 1.5, fillOpacity: 0.1, fillColor: "#3498db" },
     onEachFeature: (f, l) => {
-        l.on('click', (e) => { seleccionar(e.latlng.lat, e.latlng.lng, f.properties.VM_LEVEL); L.DomEvent.stopPropagation(e); });
+        l.on({
+            mouseover: (e) => {
+                let layer = e.target;
+                layer.setStyle({ weight: 3, color: '#f1c40f', fillOpacity: 0.3 });
+                if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) { layer.bringToFront(); }
+            },
+            mouseout: (e) => {
+                layerZonas.resetStyle(e.target);
+            },
+            click: (e) => {
+                seleccionar(e.latlng.lat, e.latlng.lng, f.properties.VM_LEVEL);
+                L.DomEvent.stopPropagation(e);
+            }
+        });
     }
 }).addTo(mymap);
 
@@ -158,8 +168,6 @@ function isPointInPolygon(latlng, poly) {
 function seleccionar(lat, lng, forcedZonaID = null) {
     selectionLayer.clearLayers();
     const z = mymap.getZoom();
-    
-    // Usamos siempre la resolución más fina para el cuadro rojo si el zoom es alto
     const step = (z >= 18) ? PARAMS.RES_PICO : (z >= 16.5) ? PARAMS.RES_NANO : (z >= 13) ? PARAMS.RES_MICRO : PARAMS.RES_MACRO;
 
     const idxX = Math.floor(((lng - ORIGIN.lng) / step) + 0.00001);
@@ -183,8 +191,7 @@ function seleccionar(lat, lng, forcedZonaID = null) {
 
     const res = getGridInfo(lat, lng);
     
-    // LÓGICA DE TRANSFORMACIÓN DE CÓDIGO
-    // Ejemplo: A6135 -> A(61)35 -> A35
+    // Nueva Estructura: Quitar 2do y 3er dígito
     let zonaLimpia = zonaID.toString();
     if(zonaLimpia.length >= 3) {
         zonaLimpia = zonaLimpia.charAt(0) + zonaLimpia.substring(3);
@@ -196,29 +203,24 @@ function seleccionar(lat, lng, forcedZonaID = null) {
                  (z >= 16.5 ? `${res.macro}${res.micro}${res.nano}` : 
                  (z >= 13 ? `${res.macro}${res.micro}` : `${res.macro}` ));
 
-    // Formato final: A35B8-JE3P3Y
     let codigoFinal = `${zonaLimpia}${codigoRaw.substring(0,2)}-${codigoRaw.substring(2)}`;
 
-    // Dibujar el cuadro rojo sobre el área seleccionada
+    // CUADRO ROJO DE SELECCIÓN
     L.rectangle([[snapLat, snapLng], [snapLat - step, snapLng + step]], { 
-        color: '#e74c3c', 
-        weight: 2, 
-        fillOpacity: 0.3,
-        interactive: false 
+        color: '#e74c3c', weight: 2, fillOpacity: 0.3, interactive: false 
     }).addTo(selectionLayer);
 
     L.marker([lat, lng], { 
         icon: L.icon({ 
             iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', 
-            iconSize: [20, 32], 
-            iconAnchor: [10, 32] 
+            iconSize: [20, 32], iconAnchor: [10, 32] 
         }) 
     }).addTo(selectionLayer)
      .bindPopup(`
         <span class="popup-header">${titulo}</span>
         <div class="codigo-final">${codigoFinal}</div>
         <div class="btn-container">
-            <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn-maps">📍 MAPS</a>
+            <a href="https://www.google.com/maps/search/?api=1&query=${lat},${lng}" target="_blank" class="btn-maps">📍 MAPS</a>
             <a href="https://wa.me/?text=Mi+Dirección+Postal:+${codigoFinal}" target="_blank" class="btn-ws">💬 WS</a>
             <button onclick="buscarEstafetaCercana(${lat}, ${lng})" class="btn-cercana">📍 ESTAFETA CERCANA</button>
         </div>
@@ -255,10 +257,7 @@ function render() {
 }
 
 document.getElementById('search-btn').addEventListener('click', () => {
-    const val = document.getElementById('search-input').value.toUpperCase().replace(/[-\s]/g, '');
-    // Nota: La búsqueda requiere adaptar la nueva lógica de omitir caracteres si se busca por texto plano.
-    // Por ahora, el buscador mantiene la lógica estándar de 8 dígitos de red.
-    alert("Buscador en mantenimiento para el nuevo formato");
+    alert("Buscador en mantenimiento para nuevo formato");
 });
 
 const overlays = { 
