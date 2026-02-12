@@ -66,16 +66,21 @@ const PARAMS = {
     RES_MACRO: 0.143, 
     RES_MICRO: 0.143 / 24,
     RES_NANO: (0.143 / 24) / 25,
-    RES_PICO: ((0.143 / 24) / 25) / 8, // ~3.3 metros
+    RES_PICO: ((0.143 / 24) / 25) / 8, 
     ALFA: "23456789ABCDEFGHJKLMNPQRSTVWXYZ",
     MACRO_X_COUNT: Math.ceil((77.0 - 83.0) / -0.143)
 };
 
-const mymap = L.map('mapid', { zoomSnap: 0.1, zoomControl: false }).setView([8.5, -80.0], 8);
+const mymap = L.map('mapid', { 
+    zoomSnap: 0.1, 
+    zoomControl: false,
+    maxZoom: 22 
+}).setView([8.5, -80.0], 8);
+
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mymap);
 L.control.zoom({ position: 'bottomright' }).addTo(mymap);
 
-// Capas
+// Capas de Datos
 const layerZonas = L.geoJSON(null, { 
     style: { color: "#333", weight: 1.5, fillOpacity: 0.1, fillColor: "#3498db" },
     onEachFeature: (f, l) => {
@@ -92,26 +97,10 @@ const layerEstafetas = L.layerGroup().addTo(mymap);
 const layerMiUbicacion = L.layerGroup().addTo(mymap);
 const selectionLayer = L.layerGroup().addTo(mymap);
 
-// Carga de GeoJSONs
+// Fetch de archivos locales
 fetch('estafetas.geojson').then(r => r.json()).then(data => layerZonas.addData(data)).catch(e => {});
 fetch('estafetasl.geojson').then(r => r.json()).then(data => L.geoJSON(data, {style: {color: 'red', weight: 2}}).addTo(layerRutas)).catch(e => {});
 fetch('estafetasp.geojson').then(r => r.json()).then(data => L.geoJSON(data, {pointToLayer: (f,ll) => L.circleMarker(ll, {radius: 6, fillColor: 'green', color: '#fff', weight: 2, fillOpacity: 1})}).addTo(layerEstafetas)).catch(e => {});
-
-function isPointInPolygon(latlng, poly) {
-    let inside = false;
-    let x = latlng.lng, y = latlng.lat;
-    let parts = poly.getLatLngs();
-    if (!Array.isArray(parts[0][0])) parts = [parts]; 
-    for (let i = 0; i < parts.length; i++) {
-        let nodes = parts[i][0] instanceof L.LatLng ? parts[i] : parts[i][0];
-        for (let j = 0, k = nodes.length - 1; j < nodes.length; k = j++) {
-            let xi = nodes[j].lng, yi = nodes[j].lat;
-            let xj = nodes[k].lng, yj = nodes[k].lat;
-            if (((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) inside = !inside;
-        }
-    }
-    return inside;
-}
 
 function encode(num, len) {
     let s = ""; let n = Math.abs(Math.floor(num));
@@ -131,10 +120,8 @@ function decode(s) {
 function getGridInfo(lat, lng) {
     const totalPicoX = Math.floor(((lng - ORIGIN.lng) / PARAMS.RES_PICO) + 0.00001);
     const totalPicoY = Math.floor(((ORIGIN.lat - lat) / PARAMS.RES_PICO) + 0.00001);
-
     const totalNanoX = Math.floor(totalPicoX / 8);
     const totalNanoY = Math.floor(totalPicoY / 8);
-
     const mx = Math.floor(totalNanoX / (24 * 25));
     const my = Math.floor(totalNanoY / (24 * 25));
     const microX = Math.floor((totalNanoX % (24 * 25)) / 25);
@@ -143,13 +130,28 @@ function getGridInfo(lat, lng) {
     const nanoY = totalNanoY % 25;
     const picoX = totalPicoX % 8;
     const picoY = totalPicoY % 8;
-
     return { 
         macro: encode((my * PARAMS.MACRO_X_COUNT) + mx, 2), 
         micro: encode((microY * 24) + microX, 2), 
         nano: encode((nanoY * 25) + nanoX, 2),
         pico: encode((picoY * 8) + picoX, 2)
     };
+}
+
+function isPointInPolygon(latlng, poly) {
+    let inside = false;
+    let x = latlng.lng, y = latlng.lat;
+    let parts = poly.getLatLngs();
+    if (!Array.isArray(parts[0][0])) parts = [parts]; 
+    for (let i = 0; i < parts.length; i++) {
+        let nodes = parts[i][0] instanceof L.LatLng ? parts[i] : parts[i][0];
+        for (let j = 0, k = nodes.length - 1; j < nodes.length; k = j++) {
+            let xi = nodes[j].lng, yi = nodes[j].lat;
+            let xj = nodes[k].lng, yj = nodes[k].lat;
+            if (((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) inside = !inside;
+        }
+    }
+    return inside;
 }
 
 function seleccionar(lat, lng, forcedZonaID = null) {
@@ -172,14 +174,14 @@ function seleccionar(lat, lng, forcedZonaID = null) {
     }
 
     if (!zonaID) {
-        L.popup().setLatLng([lat, lng]).setContent('<div class="error-msg">⚠️ FUERA DE LÍMITES</div>').openOn(mymap);
+        L.popup().setLatLng([lat, lng]).setContent('<div class="error-msg">⚠️ ÁREA NO DEFINIDA</div>').openOn(mymap);
         return;
     }
 
     const res = getGridInfo(lat, lng);
     const isZonaVisible = mymap.hasLayer(layerZonas);
     
-    let titulo = isZonaVisible ? "ZONA POSTAL" : (z >= 18 ? "PUNTO EXACTO (3m)" : (z >= 16.5 ? "CÓDIGO POSTAL" : "ÁREA"));
+    let titulo = isZonaVisible ? "ZONA POSTAL" : (z >= 18 ? "PUNTO EXACTO (3m)" : (z >= 16.5 ? "CÓDIGO POSTAL" : "ÁREA POSTAL"));
     let codigo = isZonaVisible ? zonaID : 
                  (z >= 18 ? `${zonaID}-${res.macro}${res.micro}${res.nano}${res.pico}` : 
                  (z >= 16.5 ? `${zonaID}-${res.macro}${res.micro}${res.nano}` : 
@@ -193,10 +195,11 @@ function seleccionar(lat, lng, forcedZonaID = null) {
         <span class="popup-header">${titulo}</span>
         <div class="codigo-final">${codigo}</div>
         <div class="btn-container">
-            <a href="https://wa.me/?text=Código+Postal:+${codigo}" target="_blank" class="btn-ws">💬 WS</a>
+            <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn-maps">📍 MAPS</a>
+            <a href="https://wa.me/?text=Mi+Código+Postal+COTEL+es:+${codigo}" target="_blank" class="btn-ws">💬 WS</a>
             <button onclick="buscarEstafetaCercana(${lat}, ${lng})" class="btn-cercana">📍 ESTAFETA CERCANA</button>
         </div>
-     `).openPopup();
+     `, { offset: L.point(0, -45) }).openPopup();
 }
 
 function render() {
@@ -239,9 +242,9 @@ document.getElementById('search-btn').addEventListener('click', () => {
         let lng = ORIGIN.lng + (mx * PARAMS.RES_MACRO) + (PARAMS.RES_MACRO/2);
         let zoom = 12;
 
-        if (val.length >= 4) { zoom = 15; const idMi = decode(val.substring(2,4)); const miy = Math.floor(idMi/24), mix = idMi%24; lat -= (miy*PARAMS.RES_MICRO); lng += (mix*PARAMS.RES_MICRO); }
-        if (val.length >= 6) { zoom = 17.5; const idN = decode(val.substring(4,6)); const nay = Math.floor(idN/25), nax = idN%25; lat -= (nay*PARAMS.RES_NANO); lng += (nax*PARAMS.RES_NANO); }
-        if (val.length == 8) { zoom = 19; const idP = decode(val.substring(6,8)); const piy = Math.floor(idP/8), pix = idP%8; lat -= (piy*PARAMS.RES_PICO); lng += (pix*PARAMS.RES_PICO); }
+        if (val.length >= 4) { zoom = 15; const idMi = decode(val.substring(2,4)); const miy = Math.floor(idMi/24), mix = idMi%24; lat = (ORIGIN.lat - (my*PARAMS.RES_MACRO)) - (miy*PARAMS.RES_MICRO) - (PARAMS.RES_MICRO/2); lng = (ORIGIN.lng + (mx*PARAMS.RES_MACRO)) + (mix*PARAMS.RES_MICRO) + (PARAMS.RES_MICRO/2); }
+        if (val.length >= 6) { zoom = 18; const idN = decode(val.substring(4,6)); const nay = Math.floor(idN/25), nax = idN%25; lat = (ORIGIN.lat - (my*PARAMS.RES_MACRO) - (miy*PARAMS.RES_MICRO)) - (nay*PARAMS.RES_NANO) - (PARAMS.RES_NANO/2); lng = (ORIGIN.lng + (mx*PARAMS.RES_MACRO) + (mix*PARAMS.RES_MICRO)) + (nax*PARAMS.RES_NANO) + (PARAMS.RES_NANO/2); }
+        if (val.length == 8) { zoom = 21; const idP = decode(val.substring(6,8)); const piy = Math.floor(idP/8), pix = idP%8; lat = (ORIGIN.lat - (my*PARAMS.RES_MACRO) - (miy*PARAMS.RES_MICRO) - (nay*PARAMS.RES_NANO)) - (piy*PARAMS.RES_PICO) - (PARAMS.RES_PICO/2); lng = (ORIGIN.lng + (mx*PARAMS.RES_MACRO) + (mix*PARAMS.RES_MICRO) + (nax*PARAMS.RES_NANO)) + (pix*PARAMS.RES_PICO) + (PARAMS.RES_PICO/2); }
 
         mymap.flyTo([lat, lng], zoom);
         mymap.once('moveend', () => setTimeout(() => seleccionar(lat, lng), 450));
@@ -259,11 +262,36 @@ const overlays = {
 };
 L.control.layers(null, overlays, { collapsed: false }).addTo(mymap);
 
-function findMe() { mymap.locate({setView: true, maxZoom: 19}); }
-mymap.on('locationfound', (e) => { layerMiUbicacion.clearLayers(); L.circleMarker(e.latlng, {radius: 8, color: 'white', fillColor: '#1a73e8', fillOpacity: 1, weight: 3}).addTo(layerMiUbicacion); seleccionar(e.latlng.lat, e.latlng.lng); });
+function findMe() { mymap.locate({setView: true, maxZoom: 21}); }
+mymap.on('locationfound', (e) => { 
+    layerMiUbicacion.clearLayers(); 
+    L.circleMarker(e.latlng, {radius: 8, color: 'white', fillColor: '#1a73e8', fillOpacity: 1, weight: 3}).addTo(layerMiUbicacion); 
+    seleccionar(e.latlng.lat, e.latlng.lng); 
+});
+
 mymap.on('click', (e) => seleccionar(e.latlng.lat, e.latlng.lng));
 mymap.on('moveend', render);
 render();
+
+// Función placeholder para estafetas (asegúrate de que esté definida en tu script original)
+function buscarEstafetaCercana(userLat, userLng) {
+    let puntoUsuario = L.latLng(userLat, userLng);
+    let estafetaMasCercana = null;
+    let distanciaMinima = Infinity;
+    layerEstafetas.eachLayer(function(layer) {
+        let layers = (layer.getLayers) ? layer.getLayers() : [layer];
+        layers.forEach(function(l) {
+            if (l.getLatLng) {
+                let dist = puntoUsuario.distanceTo(l.getLatLng());
+                if (dist < distanciaMinima) { distanciaMinima = dist; estafetaMasCercana = l; }
+            }
+        });
+    });
+    if (estafetaMasCercana) {
+        mymap.flyTo(estafetaMasCercana.getLatLng(), 16);
+        estafetaMasCercana.openPopup();
+    }
+}
 </script>
 </body>
 </html>
