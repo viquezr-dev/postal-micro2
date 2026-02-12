@@ -17,12 +17,10 @@
         #search-btn { background: #27ae60; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; }
         .leaflet-top.leaflet-right { margin-top: 70px !important; }
         
-        /* Tooltips y Labels */
         .leaflet-tooltip.watermark-tooltip { background: transparent!important; border: none!important; box-shadow: none!important; color: rgba(0,0,0,0.5); font-weight: bold; font-family: monospace; text-shadow: 1px 1px 0px white; pointer-events: none; }
         .label-macro { color: #1a73e8!important; font-size: 15px; }
         .label-micro { color: #e67e22!important; font-size: 11px; }
 
-        /* Popups */
         .popup-header { font-weight: bold; display: block; margin-bottom: 5px; border-bottom: 1px solid #ccc; padding-bottom: 3px; text-align: center; font-size: 11px; text-transform: uppercase; color: #666; }
         .codigo-final { background: #1a2a6c; color: white; padding: 12px; border-radius: 6px; font-size: 18px; font-weight: bold; text-align: center; margin-bottom: 8px; border: 2px solid #f1c40f; }
         .btn-container { display: flex; gap: 5px; justify-content: center; flex-wrap: wrap; }
@@ -63,7 +61,7 @@ const mymap = L.map('mapid', { zoomSnap: 0.1, zoomControl: false, maxZoom: 22 })
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 22, maxNativeZoom: 19 }).addTo(mymap);
 L.control.zoom({ position: 'bottomright' }).addTo(mymap);
 
-// INICIALIZACIÓN DE CAPAS
+// Capas
 const layerZonas = L.geoJSON(null, { 
     style: { color: "#333", weight: 1.5, fillOpacity: 0.1, fillColor: "#3498db" },
     onEachFeature: (f, l) => {
@@ -84,26 +82,18 @@ const layerMiUbicacion = L.layerGroup().addTo(mymap);
 const selectionLayer = L.layerGroup().addTo(mymap);
 const distanceLayer = L.layerGroup().addTo(mymap);
 
-// CARGA DE DATOS CON GESTIÓN DE PROPIEDADES (Auditoría: OK)
+// Carga con nombres corregidos
 fetch('estafetas.geojson').then(r => r.json()).then(data => layerZonas.addData(data));
-
 fetch('estafetasl.geojson').then(r => r.json()).then(data => {
     L.geoJSON(data, {
-        style: { color: 'red', weight: 3, opacity: 0.7 },
-        onEachFeature: (f, l) => {
-            const nombre = f.properties.NOMBRE || f.properties.name || "RUTA POSTAL";
-            l.bindPopup(`<b>${nombre}</b>`);
-        }
+        style: { color: 'red', weight: 3 },
+        onEachFeature: (f, l) => { l.bindPopup(`<b>RUTA:</b> ${f.properties.NOMBRE || f.properties.name || 'R-COT'}`); }
     }).addTo(layerRutas);
 });
-
 fetch('estafetasp.geojson').then(r => r.json()).then(data => {
     L.geoJSON(data, {
         pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 7, fillColor: '#27ae60', color: '#fff', weight: 2, fillOpacity: 1 }),
-        onEachFeature: (f, l) => {
-            const nombre = f.properties.NOMBRE || f.properties.name || "ESTAFETA COTEL";
-            l.bindPopup(`<b>${nombre}</b>`);
-        }
+        onEachFeature: (f, l) => { l.bindPopup(`<b>ESTAFETA:</b> ${f.properties.NOMBRE || f.properties.name || 'COTEL'}`); }
     }).addTo(layerEstafetas);
 });
 
@@ -136,17 +126,26 @@ function seleccionar(lat, lng, forcedZonaID = null) {
             if (layer instanceof L.Polygon && layer.getBounds().contains(L.latLng(lat, lng))) zonaID = layer.feature.properties.VM_LEVEL;
         });
     }
-    if (!zonaID) return;
+
+    // SI NO HAY ZONA (Fuera de límites)
+    if (!zonaID) {
+        L.marker([lat, lng], { icon: L.icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-black.png', iconSize: [20, 32] }) })
+        .addTo(selectionLayer)
+        .bindPopup(`
+            <span class="popup-header">⚠️ ÁREA NO DEFINIDA</span>
+            <div style="text-align:center; padding:10px;">Centro de cuadrícula fuera de límites territoriales o zona no mapeada.</div>
+        `).openPopup();
+        return;
+    }
 
     const res = getGridInfo(lat, lng);
     let titulo = "", codigoFinal = "", drawBox = false;
 
-    // JERARQUÍA DE CÓDIGO (Auditoría: OK)
     if (z < 13) {
         titulo = "ZONA POSTAL";
         codigoFinal = zonaID;
     } else {
-        drawBox = true; // Solo aparece cuadro rojo si hay zoom
+        drawBox = true; 
         if (z < 16.5) {
             titulo = "ÁREA MACRO/MICRO";
             codigoFinal = `${zonaID}-${res.macro}${res.micro}`;
@@ -174,25 +173,23 @@ function seleccionar(lat, lng, forcedZonaID = null) {
         <span class="popup-header">${titulo}</span>
         <div class="codigo-final">${codigoFinal}</div>
         <div class="btn-container">
-            <a href="https://www.google.com/maps/search/?api=1&query=${lat},${lng}" target="_blank" class="btn-maps">📍 MAPS</a>
+            <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn-maps">📍 MAPS</a>
             <a href="https://wa.me/?text=Mi+Dirección+Postal:+${codigoFinal}" target="_blank" class="btn-ws">💬 WS</a>
             <button onclick="buscarEstafetaCercana(${lat}, ${lng})" class="btn-cercana">📍 ESTAFETA CERCANA</button>
         </div>
      `, { offset: L.point(0, -45) }).openPopup();
 }
 
-// REPARACIÓN BUSCADOR ESTAFETA (Auditoría: OK)
 function buscarEstafetaCercana(lat, lng) {
     distanceLayer.clearLayers();
     const userPt = L.latLng(lat, lng);
     let cercana = null, dMin = Infinity;
 
-    layerEstafetas.eachLayer(grupo => {
-        grupo.eachLayer(p => {
-            if (p.getLatLng) {
-                const d = userPt.distanceTo(p.getLatLng());
-                if (d < dMin) { dMin = d; cercana = p; }
-            }
+    layerEstafetas.eachLayer(lGroup => {
+        lGroup.eachLayer(l => {
+            const pt = l.getLatLng();
+            const d = userPt.distanceTo(pt);
+            if (d < dMin) { dMin = d; cercana = l; }
         });
     });
 
@@ -203,8 +200,6 @@ function buscarEstafetaCercana(lat, lng) {
         L.marker(line.getCenter(), { icon: L.divIcon({ className: 'inv' }) }).bindTooltip(texto, { permanent: true, direction: 'center', className: 'distancia-label' }).addTo(distanceLayer);
         mymap.fitBounds(line.getBounds(), { padding: [100, 100] });
         cercana.openPopup();
-    } else {
-        alert("Cargando base de estafetas...");
     }
 }
 
