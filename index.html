@@ -82,18 +82,26 @@ const layerMiUbicacion = L.layerGroup().addTo(mymap);
 const selectionLayer = L.layerGroup().addTo(mymap);
 const distanceLayer = L.layerGroup().addTo(mymap);
 
-// Carga con nombres corregidos
+// CARGA CON CAMPOS ESPECÍFICOS SEGÚN AUDITORÍA
 fetch('estafetas.geojson').then(r => r.json()).then(data => layerZonas.addData(data));
+
 fetch('estafetasl.geojson').then(r => r.json()).then(data => {
     L.geoJSON(data, {
-        style: { color: 'red', weight: 3 },
-        onEachFeature: (f, l) => { l.bindPopup(`<b>RUTA:</b> ${f.properties.NOMBRE || f.properties.name || 'R-COT'}`); }
+        style: { color: 'red', weight: 3, opacity: 0.7 },
+        onEachFeature: (f, l) => { 
+            // Acceso al campo RUTA como en el original
+            l.bindPopup(`<b>RUTA:</b> ${f.properties.RUTA || 'SIN NOMBRE'}`); 
+        }
     }).addTo(layerRutas);
 });
+
 fetch('estafetasp.geojson').then(r => r.json()).then(data => {
     L.geoJSON(data, {
         pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 7, fillColor: '#27ae60', color: '#fff', weight: 2, fillOpacity: 1 }),
-        onEachFeature: (f, l) => { l.bindPopup(`<b>ESTAFETA:</b> ${f.properties.NOMBRE || f.properties.name || 'COTEL'}`); }
+        onEachFeature: (f, l) => { 
+            // Acceso al campo ESTAF_NAME como en el original
+            l.bindPopup(`<b>ESTAFETA:</b> ${f.properties.ESTAF_NAME || 'SIN NOMBRE'}`); 
+        }
     }).addTo(layerEstafetas);
 });
 
@@ -127,7 +135,6 @@ function seleccionar(lat, lng, forcedZonaID = null) {
         });
     }
 
-    // SI NO HAY ZONA (Fuera de límites)
     if (!zonaID) {
         L.marker([lat, lng], { icon: L.icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-black.png', iconSize: [20, 32] }) })
         .addTo(selectionLayer)
