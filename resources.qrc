@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/buscar_shapefile">
+    <file>icon.png</file>
+  </qresource>
+</RCC>
